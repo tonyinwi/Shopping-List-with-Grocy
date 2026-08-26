@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 
 ⚠️ The project is still under active development. Until `1.0.0`, breaking changes can be included in MINOR versions.
+## [0.26.4] - 2026-08-26
+
+### 🐛 Bug Fixes
+
+- Created unmatched products automatically instead of prompting a single choice (#75)
+
+⚠️ The project is still under active development. Until `1.0.0`, breaking changes can be included in MINOR versions.
 ## [0.26.3] - 2026-07-02
 
 ### 🐛 Bug Fixes
