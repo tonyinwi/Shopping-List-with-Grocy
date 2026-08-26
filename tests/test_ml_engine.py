@@ -5,19 +5,18 @@ _calculate_consumption_rate, should_suggest_purchase) are pure functions
 of their inputs — no HA required.
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+from custom_components.shopping_list_with_grocy.analysis_const import (
+    DEFAULT_CONSUMPTION_WEIGHT,
+    DEFAULT_FREQUENCY_WEIGHT,
+    DEFAULT_SCORE_THRESHOLD,
+    DEFAULT_SEASONAL_WEIGHT,
+)
 from custom_components.shopping_list_with_grocy.ml_engine import (
     PurchasePredictionEngine,
 )
-from custom_components.shopping_list_with_grocy.analysis_const import (
-    DEFAULT_SCORE_THRESHOLD,
-    DEFAULT_CONSUMPTION_WEIGHT,
-    DEFAULT_FREQUENCY_WEIGHT,
-    DEFAULT_SEASONAL_WEIGHT,
-)
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

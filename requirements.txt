@@ -2,4 +2,4 @@ freezegun
 homeassistant>=2024.1.0
 pytest
 pytest-asyncio
-ruff
+ruff==0.16.4

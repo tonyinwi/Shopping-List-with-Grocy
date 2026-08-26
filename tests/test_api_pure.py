@@ -4,9 +4,9 @@ These tests cover methods that don't require a live HA instance or HTTP calls.
 The API object is instantiated with a minimal stub config and a mock hass.
 """
 
-import pytest
 from unittest.mock import MagicMock
 
+import pytest
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
