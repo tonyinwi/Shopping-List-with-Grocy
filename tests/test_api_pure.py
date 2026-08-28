@@ -327,3 +327,251 @@ class TestFindSimilarProducts:
         api = make_api()
         api.final_data = {}
         assert api.find_similar_products("Lait") == []
+
+
+# ── apply_quantity_unit_conversions (issue #76) ───────────────────────────────
+
+# Quantity unit ids used across the conversion tests.
+QU_BOTTLE = 1
+QU_BOX = 2
+QU_PACK = 3
+
+
+def make_product(product_id=1, qu_purchase=QU_PACK, qu_stock=QU_BOTTLE):
+    """Return a Grocy 4 style product, without qu_factor_purchase_to_stock."""
+    return {
+        "id": str(product_id),
+        "name": f"Product {product_id}",
+        "qu_id_purchase": qu_purchase,
+        "qu_id_stock": qu_stock,
+    }
+
+
+def make_conversion(from_qu, to_qu, factor, product_id=None):
+    """Return a row as returned by /api/objects/quantity_unit_conversions."""
+    return {
+        "id": 1,
+        "from_qu_id": from_qu,
+        "to_qu_id": to_qu,
+        "factor": factor,
+        "product_id": product_id,
+    }
+
+
+class TestApplyQuantityUnitConversions:
+    def test_direct_product_specific_conversion(self):
+        """1 Pack = 18 Bottles, defined directly on the product."""
+        api = make_api()
+        products = [make_product()]
+        conversions = [
+            make_conversion(QU_PACK, QU_BOTTLE, 18, product_id=1),
+            make_conversion(QU_BOTTLE, QU_PACK, 1 / 18, product_id=1),
+        ]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert products[0]["qu_factor_purchase_to_stock"] == 18.0
+
+    def test_transitive_conversion_chain(self):
+        """Pack to Box to Bottle resolves to the product of both factors."""
+        api = make_api()
+        products = [make_product()]
+        conversions = [
+            make_conversion(QU_PACK, QU_BOX, 4),
+            make_conversion(QU_BOX, QU_BOTTLE, 6),
+        ]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert products[0]["qu_factor_purchase_to_stock"] == 24.0
+
+    def test_inverse_conversion_is_used_when_direct_is_missing(self):
+        """Only the stock to purchase direction exists, so it gets inverted."""
+        api = make_api()
+        products = [make_product()]
+        conversions = [make_conversion(QU_BOTTLE, QU_PACK, 0.5, product_id=1)]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert products[0]["qu_factor_purchase_to_stock"] == 2.0
+
+    def test_product_specific_wins_over_default(self):
+        """A product override replaces the default conversion for the same pair."""
+        api = make_api()
+        products = [make_product()]
+        conversions = [
+            make_conversion(QU_PACK, QU_BOTTLE, 12),
+            make_conversion(QU_PACK, QU_BOTTLE, 18, product_id=1),
+        ]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert products[0]["qu_factor_purchase_to_stock"] == 18.0
+
+    def test_default_still_applies_to_other_products(self):
+        """An override on one product must not leak onto another one."""
+        api = make_api()
+        products = [make_product(product_id=1), make_product(product_id=2)]
+        conversions = [
+            make_conversion(QU_PACK, QU_BOTTLE, 12),
+            make_conversion(QU_PACK, QU_BOTTLE, 18, product_id=1),
+        ]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert products[0]["qu_factor_purchase_to_stock"] == 18.0
+        assert products[1]["qu_factor_purchase_to_stock"] == 12.0
+
+    def test_unavailable_endpoint_does_not_break_sync(self):
+        """A failed fetch lands an exception in final_data instead of a list."""
+        api = make_api()
+        products = [make_product()]
+
+        api.apply_quantity_unit_conversions(products, Exception("404 Not Found"))
+
+        assert "qu_factor_purchase_to_stock" not in products[0]
+
+    @pytest.mark.parametrize("conversions", [None, [], {}, "oops"])
+    def test_unusable_conversions_are_ignored(self, conversions):
+        api = make_api()
+        products = [make_product()]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert "qu_factor_purchase_to_stock" not in products[0]
+
+    def test_same_purchase_and_stock_unit_forces_one(self):
+        api = make_api()
+        products = [make_product(qu_purchase=QU_BOTTLE, qu_stock=QU_BOTTLE)]
+        conversions = [make_conversion(QU_PACK, QU_BOTTLE, 18)]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert products[0]["qu_factor_purchase_to_stock"] == 1.0
+
+    def test_cycle_does_not_hang(self):
+        """A conversion loop with no path to the stock unit must terminate."""
+        api = make_api()
+        products = [make_product(qu_purchase=QU_PACK, qu_stock=99)]
+        conversions = [
+            make_conversion(QU_PACK, QU_BOX, 2),
+            make_conversion(QU_BOX, QU_PACK, 0.5),
+        ]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert "qu_factor_purchase_to_stock" not in products[0]
+
+    def test_no_path_leaves_product_untouched(self):
+        api = make_api()
+        products = [make_product()]
+        conversions = [make_conversion(QU_BOX, 42, 3)]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert "qu_factor_purchase_to_stock" not in products[0]
+
+    def test_malformed_rows_are_skipped(self):
+        """Garbage rows must not shadow the usable conversion."""
+        api = make_api()
+        products = [make_product()]
+        conversions = [
+            None,
+            "not a dict",
+            {"from_qu_id": "x", "to_qu_id": QU_BOTTLE, "factor": 2},
+            make_conversion(QU_PACK, QU_BOTTLE, 0, product_id=1),
+            make_conversion(QU_PACK, QU_BOTTLE, 18),
+        ]
+
+        api.apply_quantity_unit_conversions(products, conversions)
+
+        assert products[0]["qu_factor_purchase_to_stock"] == 18.0
+
+    def test_products_not_a_list_is_ignored(self):
+        api = make_api()
+
+        api.apply_quantity_unit_conversions(Exception("boom"), [])
+
+
+# ── to_purchase_quantity ──────────────────────────────────────────────────────
+
+
+class TestToPurchaseQuantity:
+    @pytest.mark.parametrize(
+        "amount,factor,expected",
+        [
+            (1, 1, 1),
+            (3, 1, 3),
+            ("3", 1, 3),
+            (18, 18, 1),
+            (5, 18, 1),
+            (20, 18, 2),
+            (36, 18, 2),
+            (0, 18, 0),
+            (0.5, 1, 1),
+            ("0.5", 1, 1),
+        ],
+    )
+    def test_rounds_up_to_whole_purchase_units(self, amount, factor, expected):
+        api = make_api()
+        assert api.to_purchase_quantity(amount, factor) == expected
+
+    @pytest.mark.parametrize("factor", [0, None, "abc", -1])
+    def test_unusable_factor_falls_back_to_one(self, factor):
+        api = make_api()
+        assert api.to_purchase_quantity(2, factor) == 2
+
+    @pytest.mark.parametrize("amount", [None, "abc", "", -1])
+    def test_unusable_amount_returns_zero(self, amount):
+        api = make_api()
+        assert api.to_purchase_quantity(amount, 18) == 0
+
+
+# ── build_item_list — partial packs (issue #76 follow-up) ──────────────────
+
+
+class TestBuildItemListQuantities:
+    """A real purchase to stock factor must never display a quantity of zero."""
+
+    def _make_data(self, amount, qty_factor):
+        return {
+            "shopping_lists": [{"id": 1, "name": "Liste principale"}],
+            "products": [
+                {
+                    "id": "1",
+                    "name": "Eau",
+                    "qu_id_purchase": "3",
+                    "qu_id_stock": "1",
+                    "qu_factor_purchase_to_stock": qty_factor,
+                },
+            ],
+            "shopping_list": [
+                {
+                    "id": "10",
+                    "product_id": "1",
+                    "shopping_list_id": 1,
+                    "amount": amount,
+                    "done": 0,
+                },
+            ],
+        }
+
+    def test_partial_pack_rounds_up_to_one(self):
+        api = make_api()
+        result = api.build_item_list(self._make_data(5, 18.0))
+        assert result[0]["products"][0]["name"] == "Eau (x1)"
+
+    def test_full_pack(self):
+        api = make_api()
+        result = api.build_item_list(self._make_data(18, 18.0))
+        assert result[0]["products"][0]["name"] == "Eau (x1)"
+
+    def test_more_than_one_pack_rounds_up(self):
+        api = make_api()
+        result = api.build_item_list(self._make_data(20, 18.0))
+        assert result[0]["products"][0]["name"] == "Eau (x2)"
+
+    def test_decimal_amount_does_not_crash(self):
+        api = make_api()
+        result = api.build_item_list(self._make_data("0.5", 1.0))
+        assert result[0]["products"][0]["name"] == "Eau (x1)"
