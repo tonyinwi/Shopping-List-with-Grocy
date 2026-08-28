@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 
 ⚠️ The project is still under active development. Until `1.0.0`, breaking changes can be included in MINOR versions.
+## [0.26.5] - 2026-08-28
+
+### 🐛 Bug Fixes
+
+- Resolved Grocy 4 unit conversions and rounded quantities up to whole packs
+
+### ⚙️ Miscellaneous
+
+- Pinned ruff and added an explicit lint configuration
+
+⚠️ The project is still under active development. Until `1.0.0`, breaking changes can be included in MINOR versions.
 ## [0.26.4] - 2026-08-26
 
 ### 🐛 Bug Fixes
