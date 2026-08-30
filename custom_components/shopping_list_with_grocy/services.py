@@ -36,6 +36,36 @@ from .ml_engine import PurchasePredictionEngine
 LOGGER = logging.getLogger(__name__)
 
 
+def set_voice_response(hass, state, attributes=None):
+    """
+    Push a voice response through the sensor that actually exists.
+
+    These calls used to target the entity id
+    `sensor.shopping_list_with_grocy_voice_response_helper` -- which is the
+    sensor's UNIQUE_ID, not its entity id. `GrocyVoiceResponseHelperSensor` is
+    named "Grocy Voice Response Helper", so Home Assistant registers it as
+    `sensor.grocy_voice_response_helper`.
+
+    Nothing failed: `async_set` invents a state object for an unregistered id,
+    so the write went into a phantom entity while the voice blueprint read the
+    real sensor, found no `voice_response`, and fell back to a generic
+    "<product> processed, check notifications for details" on every utterance.
+
+    Correcting the id alone is not enough -- `extra_state_attributes` is
+    authoritative, so a plain `async_set` on the right entity is erased the
+    next time it writes its state. The value has to be owned by the entity.
+
+    Returns False when the sensor is not loaded, so a caller can tell
+    "nobody heard me" apart from "said nothing".
+    """
+    entities = (hass.data.get(DOMAIN) or {}).get("entities") or {}
+    sensor = entities.get("voice_response_helper")
+    if sensor is None:
+        return False
+    sensor.set_response(state, attributes or {})
+    return True
+
+
 async def get_voice_translation(hass, voice_key: str, **kwargs) -> str:
     """Get voice response from frontend translations with formatting."""
     language = hass.config.language or "en"
@@ -834,8 +864,8 @@ def async_setup_services(hass) -> None:
             if not choices:
                 if silent:
                     voice_response = await get_voice_translation(hass, "no_choices")
-                    hass.states.async_set(
-                        "sensor.shopping_list_with_grocy_voice_response_helper",
+                    set_voice_response(
+                        hass,
                         "error",
                         {
                             "voice_response": voice_response,
@@ -903,8 +933,8 @@ def async_setup_services(hass) -> None:
             if not choices:
                 if silent:
                     voice_response = await get_voice_translation(hass, "no_choices")
-                    hass.states.async_set(
-                        "sensor.shopping_list_with_grocy_voice_response_helper",
+                    set_voice_response(
+                        hass,
                         "error",
                         {
                             "voice_response": voice_response,
@@ -971,8 +1001,8 @@ def async_setup_services(hass) -> None:
                     choice_number=choice_number,
                     max_choices=len(matches),
                 )
-                hass.states.async_set(
-                    "sensor.shopping_list_with_grocy_voice_response_helper",
+                set_voice_response(
+                    hass,
                     "error",
                     {
                         "voice_response": voice_response,
@@ -1070,8 +1100,8 @@ def async_setup_services(hass) -> None:
                         product_name=product_name,
                         quantity=quantity,
                     )
-                hass.states.async_set(
-                    "sensor.shopping_list_with_grocy_voice_response_helper",
+                set_voice_response(
+                    hass,
                     "success",
                     {
                         "voice_response": voice_response,
@@ -1130,8 +1160,8 @@ def async_setup_services(hass) -> None:
                 voice_response = await get_voice_translation(
                     hass, "selection_error", choice_number=choice_number
                 )
-                hass.states.async_set(
-                    "sensor.shopping_list_with_grocy_voice_response_helper",
+                set_voice_response(
+                    hass,
                     "error",
                     {
                         "voice_response": voice_response,
@@ -1211,8 +1241,8 @@ def async_setup_services(hass) -> None:
 
         if not product_name:
             voice_response = await get_voice_translation(hass, "no_product_name")
-            hass.states.async_set(
-                "sensor.shopping_list_with_grocy_voice_response_helper",
+            set_voice_response(
+                hass,
                 "error",
                 {
                     "product_name": product_name,
@@ -1261,8 +1291,8 @@ def async_setup_services(hass) -> None:
             else:
                 hass.data[DOMAIN]["voice_mode"] = True
 
-            hass.states.async_set(
-                "sensor.shopping_list_with_grocy_voice_response_helper",
+            set_voice_response(
+                hass,
                 "processing",
                 {
                     "product_name": product_name,
@@ -1433,8 +1463,8 @@ def async_setup_services(hass) -> None:
                         },
                     )
 
-                    hass.states.async_set(
-                        "sensor.shopping_list_with_grocy_voice_response_helper",
+                    set_voice_response(
+                        hass,
                         "multiple_choices",
                         {
                             "product_name": product_name,
@@ -1484,8 +1514,8 @@ def async_setup_services(hass) -> None:
                         },
                     )
 
-                    hass.states.async_set(
-                        "sensor.shopping_list_with_grocy_voice_response_helper",
+                    set_voice_response(
+                        hass,
                         "success",
                         {
                             "product_name": product_name,
@@ -1855,8 +1885,8 @@ def async_setup_services(hass) -> None:
         if not voice_input:
             if silent:
                 voice_response = await get_voice_translation(hass, "no_choice_input")
-                hass.states.async_set(
-                    "sensor.shopping_list_with_grocy_voice_response_helper",
+                set_voice_response(
+                    hass,
                     "error",
                     {
                         "voice_response": voice_response,
@@ -1877,8 +1907,8 @@ def async_setup_services(hass) -> None:
                 voice_response = await get_voice_translation(
                     hass, "invalid_voice_choice", voice_input=voice_input
                 )
-                hass.states.async_set(
-                    "sensor.shopping_list_with_grocy_voice_response_helper",
+                set_voice_response(
+                    hass,
                     "error",
                     {
                         "voice_response": voice_response,

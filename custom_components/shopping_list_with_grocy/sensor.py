@@ -178,10 +178,21 @@ class GrocyVoiceResponseHelperSensor(SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_voice_response_helper"
         self._state = "idle"
         self._sync_not_enabled = None
+        self._extra = {}
 
     async def async_added_to_hass(self):
         await self._load_sync_not_enabled()
+        # Publish the instance so the voice services can write through the
+        # entity rather than around it -- see set_voice_response().
+        entities = self.hass.data.setdefault(DOMAIN, {}).setdefault("entities", {})
+        entities["voice_response_helper"] = self
         await super().async_added_to_hass()
+
+    def set_response(self, state, attributes=None):
+        """Set the state and attributes a voice service wants read back."""
+        self._state = state
+        self._extra = dict(attributes or {})
+        self.async_write_ha_state()
 
     async def _load_sync_not_enabled(self):
         from .services import get_voice_translation
@@ -205,7 +216,9 @@ class GrocyVoiceResponseHelperSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        return {"sync_not_enabled": self._sync_not_enabled}
+        # Merged, not replaced: this property is authoritative, so anything
+        # written straight to the state machine would be erased here.
+        return {"sync_not_enabled": self._sync_not_enabled, **self._extra}
 
     async def async_update(self):
         await self._load_sync_not_enabled()
