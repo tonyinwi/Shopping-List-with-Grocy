@@ -116,7 +116,7 @@ action:
     then:
       - if:
           - condition: template
-            value_template: "{{ not state_attr('todo.shopping_list_with_grocy_liste_de_courses', 'enable_bidirectional_sync') }}"
+            value_template: "{{ not state_attr(todo_entity, 'enable_bidirectional_sync') }}"
         then:
           - set_conversation_response: >
               {% set domain_data = states.sensor.shopping_list_with_grocy_voice_response_helper.attributes %}
