@@ -989,11 +989,48 @@ class ShoppingListWithGrocyApi:
             if normalized_search in normalized_product:
                 contains_matches.append(product)
 
-        if contains_matches:
+        # A SUBSTRING HIT MUST NOT SHADOW A BETTER FUZZY MATCH.
+        #
+        # `contains` used to return here, unconditionally, and a short spoken
+        # word is inside *some* longer product name almost every time. So one
+        # accidental substring beat the tier below it and the better answer was
+        # never computed. Live: "thyme" transcribed as "time" offered
+        # `... nighttime calm` and `prime time buttery beef rub`, while `thyme`
+        # -- 0.667, above this method's own 0.6 threshold -- was not offered.
+        #
+        #   ratio("time", "thyme")                        0.667   >= 0.6
+        #   ratio("time", "prime time buttery beef rub")  0.258
+        #   ratio("time", "clorox ... nighttime calm")    0.119
+        #
+        # The fuzzy pass now always runs, and the two sets are MERGED and
+        # ranked rather than one replacing the other. Merging matters: someone
+        # saying "chicken" wants every chicken product, and several of those
+        # score below 0.6 against the bare word. Dropping them to promote the
+        # fuzzy winner would hide legitimate options to fix a different bug.
+        #
+        # So nothing is lost, and the right answer leads.
+        scored = {}
+        for product in contains_matches:
+            scored[product.get("id")] = product
+        for product in products:
+            if self.calculate_similarity(search_name, product.get("name", "")) >= 0.6:
+                scored[product.get("id")] = product
+
+        if scored:
+            ranked = sorted(
+                scored.values(),
+                key=lambda pr: self.calculate_similarity(
+                    search_name, pr.get("name", "")
+                ),
+                reverse=True,
+            )
             return {
                 "found": True,
-                "matches": contains_matches,
-                "search_type": "contains",
+                "matches": ranked,
+                "search_type": (
+                    "contains" if len(ranked) == len(contains_matches)
+                    else "contains_and_similar"
+                ),
                 "search_term": search_name,
             }
 
