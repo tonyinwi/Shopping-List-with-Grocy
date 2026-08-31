@@ -158,6 +158,7 @@ def get_voice_response(translations: Dict[str, Any], voice_key: str) -> str:
         "multiple_choices_detailed": "Multiple products found for {product_name}. Your options are:\n{choices_list}.\nSay 'choice' followed by the number of your choice.",
         "multiple_choices_simple": "Multiple choices found for {product_name}, check the app.",
         "product_success": "{product_name} added to your shopping list!",
+        "product_already_on_list": "{product_name} was already on your list -- now {total}.",
         "product_error": "Error adding {product_name}",
         "multiple_choices_voice": "I found {count} choices for {product_name}: {choices_text}. Say the number of your choice, for example 'Choice 2'.",
         "create_new_product": "🆕 Create '{product_name}' as new product",

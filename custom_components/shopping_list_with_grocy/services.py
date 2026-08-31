@@ -1351,6 +1351,30 @@ def async_setup_services(hass) -> None:
 
                 todo_entity = todo_entities[0]  # Use the first todo entity
 
+            # WAS IT ALREADY ON THE LIST? Read BEFORE adding, because the add
+            # increments an existing row rather than duplicating it -- so
+            # afterwards there is no way to tell "added" from "you already had
+            # two" (#286). Every product already carries
+            # `qty_in_shopping_lists`; nothing on this path was reading it.
+            #
+            # Only when the name resolves to exactly ONE product. Several
+            # matches means the user gets a choice prompt and nothing is added,
+            # so there is nothing to report.
+            prior_qty = 0.0
+            _pre_api = hass.data.get(DOMAIN, {}).get("instances", {}).get("api")
+            if _pre_api:
+                try:
+                    _pre = await _pre_api.search_product_in_grocy(product_name)
+                    _pre_matches = _pre.get("matches") or []
+                    if len(_pre_matches) == 1:
+                        prior_qty = float(
+                            _pre_matches[0].get("qty_in_shopping_lists") or 0
+                        )
+                except Exception:  # noqa: BLE001
+                    # Best effort. A failed pre-read must never stop the add --
+                    # the worst case is the old, slightly wrong sentence.
+                    prior_qty = 0.0
+
             try:
                 await hass.services.async_call(
                     "todo",
@@ -1488,12 +1512,27 @@ def async_setup_services(hass) -> None:
                         )
                         quantity = extracted_quantity
 
-                    voice_response = await get_voice_translation(
-                        hass,
-                        "product_success",
-                        product_name=clean_product_name,
-                        quantity=quantity,
-                    )
+                    if prior_qty > 0:
+                        # "Added" was a lie here: the row went from prior to
+                        # prior+quantity. Say the total, because the whole
+                        # reason to ask by voice is that you cannot see the
+                        # list -- so "I already asked" is the normal case, not
+                        # an edge one.
+                        _total = prior_qty + quantity
+                        voice_response = await get_voice_translation(
+                            hass,
+                            "product_already_on_list",
+                            product_name=clean_product_name,
+                            quantity=quantity,
+                            total=int(_total) if float(_total).is_integer() else _total,
+                        )
+                    else:
+                        voice_response = await get_voice_translation(
+                            hass,
+                            "product_success",
+                            product_name=clean_product_name,
+                            quantity=quantity,
+                        )
                     response_key = f"voice_result_{int(time.time() * 1000)}"
                     hass.data[DOMAIN]["voice_responses"][response_key] = {
                         "success": True,
