@@ -1367,9 +1367,15 @@ def async_setup_services(hass) -> None:
                     _pre = await _pre_api.search_product_in_grocy(product_name)
                     _pre_matches = _pre.get("matches") or []
                     if len(_pre_matches) == 1:
-                        prior_qty = float(
-                            _pre_matches[0].get("qty_in_shopping_lists") or 0
-                        )
+                        # Sum the rows, NOT `qty_in_shopping_lists` -- that key
+                        # is added to the PARSED product handed to the sensors,
+                        # and a search match is the raw Grocy product, which
+                        # does not carry it. Reading it there silently yields 0,
+                        # which is how this looked fixed and was not.
+                        _pid = int(_pre_matches[0].get("id") or 0)
+                        for _row in (_pre_api.final_data.get("shopping_list") or []):
+                            if int(_row.get("product_id") or 0) == _pid:
+                                prior_qty += float(_row.get("amount") or 0)
                 except Exception:  # noqa: BLE001
                     # Best effort. A failed pre-read must never stop the add --
                     # the worst case is the old, slightly wrong sentence.
